@@ -1,0 +1,90 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  creationTimestamp: null
+  labels:
+    app: postgres-cluster
+  name: postgres-cluster
+  namespace: postgres
+spec:
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Delete
+    whenScaled: Delete
+  podManagementPolicy: "Parallel"
+  replicas: 3
+  selector:
+    matchLabels:
+      app: postgres-cluster
+  serviceName: postgres-cluster
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: postgres-cluster
+    spec:
+      containers:
+        - image: postgres:15
+          name: postgres
+          resources: {}
+          env:
+            - name: POSTGRES_DB
+              value: postgres
+            - name: POSTGRES_USER
+              value: postgres
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  key: postgres
+                  name: postgres-cluster
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  key: replication
+                  name: postgres-cluster
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: status.podIP
+          ports:
+            - name: postgres
+              containerPort: 5432
+            - name: repl
+              containerPort: 5432
+          livenessProbe:
+            exec:
+              command:
+                - "sh"
+                - "-c"
+                - "exec pg_isready -U postgres -h 127.0.0.1 -p 5432"
+            initialDelaySeconds: 20
+            periodSeconds: 5
+            timeoutSeconds: 5
+          readinessProbe:
+            exec:
+              command:
+                - "sh"
+                - "-c"
+                - "exec pg_isready -U postgres -h 127.0.0.1 -p 5432"
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 1
+          volumeMounts:
+            # - name: data
+            #   mountPath: /var/lib/postgresql/data
+            - name: init-instance
+              mountPath: /docker-entrypoint-initdb.d
+      volumes:
+        - name: init-instance
+          configMap:
+            name: postgres-cluster
+  # volumeClaimTemplates:
+  #   - metadata:
+  #       name: data
+  #     spec:
+  #       accessModes:
+  #         - "ReadWriteOncePod"
+  #       resources:
+  #         requests:
+  #           storage: 1Gi
+status: {}
